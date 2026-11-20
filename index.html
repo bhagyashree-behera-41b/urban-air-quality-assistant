@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Urban Air Quality Assistant</title>
+<style>
+body{font-family:Arial,sans-serif;background:#eef2f7;margin:0;padding:16px}
+.card{background:#fff;max-width:520px;margin:auto;padding:20px;border-radius:16px;box-shadow:0 4px 20px rgba(0,0,0,.1)}
+h1{font-size:22px;margin:0} p{color:#555}
+input,button{width:100%;padding:12px;margin-top:10px;border-radius:10px;border:1px solid #ccc;font-size:16px;box-sizing:border-box}
+button{background:#2563eb;color:#fff;border:0;font-weight:bold}
+.result{margin-top:16px;padding:14px;border-radius:12px;background:#f1f5f9}
+.big{font-size:42px;font-weight:bold}
+.good{color:green}.mod{color:#d97706}.bad{color:red}
+small{color:#666}
+</style>
+</head>
+<body>
+<div class="card">
+<h1>🌫️ Urban Air Quality Assistant</h1>
+<p>Check live AQI of any city in India</p>
+<input id="city" placeholder="Enter city - e.g. Bhubaneswar, Delhi" value="Bhubaneswar">
+<button onclick="check()">Check Air Quality</button>
+<div id="out" class="result">Enter a city and tap Check.</div>
+<small>Data: Open-Meteo Air Quality API • Free, no login</small>
+</div>
+<script>
+async function check(){
+let city=document.getElementById('city').value;
+let out=document.getElementById('out');
+out.innerHTML='Loading...';
+try{
+let g=await fetch('https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(city)+'&count=1&language=en&format=json').then(r=>r.json());
+if(!g.results){out.innerHTML='City not found. Try again.';return;}
+let lat=g.results[0].latitude, lon=g.results[0].longitude, name=g.results[0].name+', '+ (g.results[0].country||'');
+let d=await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&current=pm2_5,pm10,us_aqi,ozone,nitrogen_dioxide&domains=cams`).then(r=>r.json());
+let c=d.current, aqi=c.us_aqi;
+let label=aqi<=50?'Good 😊':aqi<=100?'Moderate 🙂':aqi<=150?'Unhealthy for Sensitive Groups 😷':aqi<=200?'Unhealthy 🤢':'Very Unhealthy ☠️';
+let cls=aqi<=50?'good':aqi<=100?'mod':'bad';
+let tip=aqi<=50?'Great time for outdoor walk!':aqi<=100?'Sensitive people should wear mask.':aqi<=150?'Avoid long outdoor exercise. Wear N95 mask.': 'Stay indoors. Use air purifier. Keep windows closed.';
+out.innerHTML=`<div><b>${name}</b></div><div class="big ${cls}">${aqi}</div><div><b>US AQI - ${label}</b></div><hr>PM2.5: ${c.pm2_5} µg/m³<br>PM10: ${c.pm10} µg/m³<br>Ozone: ${c.ozone} µg/m³<br>NO2: ${c.nitrogen_dioxide} µg/m³<hr><b>Tip:</b> ${tip}`;
+}catch(e){out.innerHTML='Error. Check internet and try again.';}
+}
+check();
+</script>
+</body>
+</html>
