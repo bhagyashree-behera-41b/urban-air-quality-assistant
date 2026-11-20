@@ -5,44 +5,54 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Urban Air Quality Assistant</title>
 <style>
-body{font-family:Arial,sans-serif;background:#eef2f7;margin:0;padding:16px}
-.card{background:#fff;max-width:520px;margin:auto;padding:20px;border-radius:16px;box-shadow:0 4px 20px rgba(0,0,0,.1)}
-h1{font-size:22px;margin:0} p{color:#555}
-input,button{width:100%;padding:12px;margin-top:10px;border-radius:10px;border:1px solid #ccc;font-size:16px;box-sizing:border-box}
-button{background:#2563eb;color:#fff;border:0;font-weight:bold}
-.result{margin-top:16px;padding:14px;border-radius:12px;background:#f1f5f9}
-.big{font-size:42px;font-weight:bold}
-.good{color:green}.mod{color:#d97706}.bad{color:red}
-small{color:#666}
+*{box-sizing:border-box;font-family:Arial,sans-serif}
+body{margin:0;background:#eef4ff;padding:16px}
+.card{max-width:480px;margin:20px auto;background:#fff;border-radius:20px;padding:24px;box-shadow:0 10px 30px rgba(0,0,0,.1)}
+h1{font-size:22px;margin:0}
+p.sub{color:#666;margin:10px 0 18px}
+input{width:100%;padding:14px;border:1px solid #ddd;border-radius:12px;font-size:16px;outline:none}
+button{width:100%;margin-top:12px;padding:14px;border:0;border-radius:12px;background:#2563eb;color:#fff;font-size:17px;font-weight:bold}
+#result{margin-top:14px;background:#f1f5f9;padding:14px;border-radius:12px;min-height:60px;line-height:1.6}
+.badge{display:inline-block;padding:4px 10px;border-radius:20px;color:#fff;font-weight:bold;font-size:13px}
+small{color:#777}
 </style>
 </head>
 <body>
 <div class="card">
-<h1>🌫️ Urban Air Quality Assistant</h1>
-<p>Check live AQI of any city in India</p>
-<input id="city" placeholder="Enter city - e.g. Bhubaneswar, Delhi" value="Bhubaneswar">
-<button onclick="check()">Check Air Quality</button>
-<div id="out" class="result">Enter a city and tap Check.</div>
-<small>Data: Open-Meteo Air Quality API • Free, no login</small>
+<h1>🌥️ Urban Air Quality Assistant</h1>
+<p class="sub">Check live AQI of any city in India</p>
+<input id="city" value="Bhubaneswar" placeholder="Enter city - e.g. Delhi">
+<button onclick="checkAQI()">Check Air Quality</button>
+<div id="result">Enter a city and tap Check.</div>
+<p><small>Data: Open-Meteo Air Quality API • Free, no login</small></p>
 </div>
 <script>
-async function check(){
-let city=document.getElementById('city').value;
-let out=document.getElementById('out');
-out.innerHTML='Loading...';
-try{
-let g=await fetch('https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(city)+'&count=1&language=en&format=json').then(r=>r.json());
-if(!g.results){out.innerHTML='City not found. Try again.';return;}
-let lat=g.results[0].latitude, lon=g.results[0].longitude, name=g.results[0].name+', '+ (g.results[0].country||'');
-let d=await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&current=pm2_5,pm10,us_aqi,ozone,nitrogen_dioxide&domains=cams`).then(r=>r.json());
-let c=d.current, aqi=c.us_aqi;
-let label=aqi<=50?'Good 😊':aqi<=100?'Moderate 🙂':aqi<=150?'Unhealthy for Sensitive Groups 😷':aqi<=200?'Unhealthy 🤢':'Very Unhealthy ☠️';
-let cls=aqi<=50?'good':aqi<=100?'mod':'bad';
-let tip=aqi<=50?'Great time for outdoor walk!':aqi<=100?'Sensitive people should wear mask.':aqi<=150?'Avoid long outdoor exercise. Wear N95 mask.': 'Stay indoors. Use air purifier. Keep windows closed.';
-out.innerHTML=`<div><b>${name}</b></div><div class="big ${cls}">${aqi}</div><div><b>US AQI - ${label}</b></div><hr>PM2.5: ${c.pm2_5} µg/m³<br>PM10: ${c.pm10} µg/m³<br>Ozone: ${c.ozone} µg/m³<br>NO2: ${c.nitrogen_dioxide} µg/m³<hr><b>Tip:</b> ${tip}`;
-}catch(e){out.innerHTML='Error. Check internet and try again.';}
+async function checkAQI(){
+  const city = document.getElementById('city').value.trim();
+  const box = document.getElementById('result');
+  if(!city){ box.innerHTML='Please enter a city name.'; return; }
+  box.innerHTML='Loading... Please wait...';
+  try{
+    const geoRes = await fetch('https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(city)+'&count=1&language=en&format=json');
+    const geo = await geoRes.json();
+    if(!geo.results || !geo.results.length){ box.innerHTML='City not found. Try Delhi, Mumbai, Bhubaneswar.'; return; }
+    const place = geo.results[0];
+    const aqRes = await fetch('https://air-quality-api.open-meteo.com/v1/air-quality?latitude='+place.latitude+'&longitude='+place.longitude+'&current=pm2_5,pm10,us_aqi,ozone,nitrogen_dioxide&domains=auto');
+    const aq = await aqRes.json();
+    const c = aq.current;
+    const aqi = c.us_aqi;
+    let label='Good', color='#22c55e';
+    if(aqi>300){label='Hazardous';color='#7e22ce'}
+    else if(aqi>200){label='Very Unhealthy';color='#dc2626'}
+    else if(aqi>150){label='Unhealthy';color='#ea580c'}
+    else if(aqi>100){label='Unhealthy for Sensitive Groups';color='#f59e0b'}
+    else if(aqi>50){label='Moderate';color='#eab308'}
+    box.innerHTML='<b>'+place.name+', '+(place.admin1||'')+'</b><br><span style="font-size:32px;font-weight:bold">'+aqi+'</span> US AQI <span class="badge" style="background:'+color+'">'+label+'</span><br>PM2.5: '+c.pm2_5+' µg/m³<br>PM10: '+c.pm10+' µg/m³<br>Ozone: '+c.ozone+' µg/m³<br>NO2: '+c.nitrogen_dioxide+' µg/m³<br><small>Updated: '+c.time+'</small>';
+  }catch(e){
+    box.innerHTML='Error. Check internet and try again. <br><small>'+e.message+'</small>';
+  }
 }
-check();
+checkAQI();
 </script>
 </body>
 </html>
