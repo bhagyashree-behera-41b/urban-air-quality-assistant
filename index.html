@@ -3,56 +3,102 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src https://geocoding-api.open-meteo.com https://air-quality-api.open-meteo.com; style-src 'self' 'unsafe-inline'">
 <title>Urban Air Quality Assistant</title>
 <style>
 *{box-sizing:border-box;font-family:Arial,sans-serif}
-body{margin:0;background:#eef4ff;padding:16px}
+body{margin:0;background:#eef4ff;padding:16px;color:#111827}
 .card{max-width:480px;margin:20px auto;background:#fff;border-radius:20px;padding:24px;box-shadow:0 10px 30px rgba(0,0,0,.1)}
-h1{font-size:22px;margin:0}
-p.sub{color:#666;margin:10px 0 18px}
-input{width:100%;padding:14px;border:1px solid #ddd;border-radius:12px;font-size:16px;outline:none}
-button{width:100%;margin-top:12px;padding:14px;border:0;border-radius:12px;background:#2563eb;color:#fff;font-size:17px;font-weight:bold}
-#result{margin-top:14px;background:#f1f5f9;padding:14px;border-radius:12px;min-height:60px;line-height:1.6}
-.badge{display:inline-block;padding:4px 10px;border-radius:20px;color:#fff;font-weight:bold;font-size:13px}
-small{color:#777}
+h1{font-size:24px;margin:0;color:#111827}
+p.sub{color:#374151;margin:10px 0 18px}
+label{font-weight:bold;display:block;margin-bottom:6px}
+input{width:100%;padding:14px;border:2px solid #6b7280;border-radius:12px;font-size:17px;outline:none;color:#111827;background:#fff}
+input:focus{border-color:#1d4ed8;outline:3px solid #bfdbfe}
+button{width:100%;margin-top:12px;padding:14px;border:0;border-radius:12px;background:#1d4ed8;color:#fff;font-size:18px;font-weight:bold;cursor:pointer}
+button:focus{outline:3px solid #000;outline-offset:2px}
+button.secondary{background:#fff;color:#1d4ed8;border:2px solid #1d4ed8}
+#result{margin-top:14px;background:#f1f5f9;padding:14px;border-radius:12px;min-height:60px;line-height:1.7;font-size:16px}
+.badge{display:inline-block;padding:5px 12px;border-radius:20px;color:#fff;font-weight:bold;font-size:14px}
+#testResult{margin-top:10px;font-size:14px;color:#065f46;background:#ecfdf5;padding:10px;border-radius:10px;display:none}
+small{color:#4b5563}
 </style>
 </head>
 <body>
-<div class="card">
+<main class="card">
 <h1>🌥️ Urban Air Quality Assistant</h1>
 <p class="sub">Check live AQI of any city in India</p>
-<input id="city" value="Bhubaneswar" placeholder="Enter city - e.g. Delhi">
-<button onclick="checkAQI()">Check Air Quality</button>
-<div id="result">Enter a city and tap Check.</div>
-<p><small>Data: Open-Meteo Air Quality API • Free, no login</small></p>
-</div>
+<label for="city">City Name</label>
+<input id="city" value="Bhubaneswar" placeholder="Enter city - e.g. Delhi" aria-label="Enter city name" autocomplete="off">
+<button onclick="checkAQI()" aria-label="Check air quality for entered city">Check Air Quality</button>
+<div id="result" role="status" aria-live="polite">Enter a city and tap Check.</div>
+<button class="secondary" onclick="runTests()" aria-label="Run self tests to check app">Run Self-Test</button>
+<div id="testResult" role="status"></div>
+<p><small>Data: Open-Meteo Air Quality API • Free, no login, no API key needed - Secure</small></p>
+</main>
 <script>
-async function checkAQI(){
-  const city = document.getElementById('city').value.trim();
-  const box = document.getElementById('result');
-  if(!city){ box.innerHTML='Please enter a city name.'; return; }
-  box.innerHTML='Loading... Please wait...';
-  try{
-    const geoRes = await fetch('https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(city)+'&count=1&language=en&format=json');
-    const geo = await geoRes.json();
-    if(!geo.results || !geo.results.length){ box.innerHTML='City not found. Try Delhi, Mumbai, Bhubaneswar.'; return; }
-    const place = geo.results[0];
-    const aqRes = await fetch('https://air-quality-api.open-meteo.com/v1/air-quality?latitude='+place.latitude+'&longitude='+place.longitude+'&current=pm2_5,pm10,us_aqi,ozone,nitrogen_dioxide&domains=auto');
-    const aq = await aqRes.json();
-    const c = aq.current;
-    const aqi = c.us_aqi;
-    let label='Good', color='#22c55e';
-    if(aqi>300){label='Hazardous';color='#7e22ce'}
-    else if(aqi>200){label='Very Unhealthy';color='#dc2626'}
-    else if(aqi>150){label='Unhealthy';color='#ea580c'}
-    else if(aqi>100){label='Unhealthy for Sensitive Groups';color='#f59e0b'}
-    else if(aqi>50){label='Moderate';color='#eab308'}
-    box.innerHTML='<b>'+place.name+', '+(place.admin1||'')+'</b><br><span style="font-size:32px;font-weight:bold">'+aqi+'</span> US AQI <span class="badge" style="background:'+color+'">'+label+'</span><br>PM2.5: '+c.pm2_5+' µg/m³<br>PM10: '+c.pm10+' µg/m³<br>Ozone: '+c.ozone+' µg/m³<br>NO2: '+c.nitrogen_dioxide+' µg/m³<br><small>Updated: '+c.time+'</small>';
-  }catch(e){
-    box.innerHTML='Error. Check internet and try again. <br><small>'+e.message+'</small>';
+// SECURITY: No API key in code. Input validation.
+const cache = new Map(); // EFFICIENCY: Cache results for 10 minutes
+let lastController = null;
+
+function isValidCity(city){ return /^[a-zA-Z\s\-]{2,50}$/.test(city); }
+function getAQILabel(aqi){
+  if(aqi>300) return ['Hazardous','#6b21a8'];
+  if(aqi>200) return ['Very Unhealthy','#b91c1c'];
+  if(aqi>150) return ['Unhealthy','#c2410c'];
+  if(aqi>100) return ['Unhealthy for Sensitive Groups','#b45309'];
+  if(aqi>50) return ['Moderate','#a16207'];
+  return ['Good','#15803d'];
+}
+// TESTING: Built-in unit tests
+function runTests(){
+  const tests = [
+    [10,'Good'],[60,'Moderate'],[120,'Unhealthy for Sensitive Groups'],
+    [180,'Unhealthy'],[250,'Very Unhealthy'],[350,'Hazardous']
+  ];
+  let passed = 0;
+  for(const [input, expected] of tests){
+    if(getAQILabel(input)[0]===expected) passed++;
   }
+  const el = document.getElementById('testResult');
+  el.style.display='block';
+  el.textContent = passed===tests.length ? '✅ All '+passed+'/'+tests.length+' Tests Passed! AQI logic is correct.' : '❌ '+passed+'/'+tests.length+' Tests Passed';
+}
+async function checkAQI(){
+  const cityInput = document.getElementById('city');
+  const city = cityInput.value.trim();
+  const box = document.getElementById('result');
+  if(!city){ box.textContent='Please enter a city name.'; return; }
+  if(!isValidCity(city)){ box.textContent='Please enter only letters. Example: Delhi, Mumbai'; return; }
+  const key = city.toLowerCase();
+  if(cache.has(key)){ renderResult(cache.get(key)); return; }
+  box.textContent='Loading... Please wait...';
+  if(lastController) lastController.abort();
+  lastController = new AbortController();
+  try{
+    const geoRes = await fetch('https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(city)+'&count=1&language=en&format=json',{signal:lastController.signal});
+    const geo = await geoRes.json();
+    if(!geo.results || !geo.results.length){ box.textContent='City not found. Try Delhi, Mumbai, Bhubaneswar.'; return; }
+    const place = geo.results[0];
+    const aqRes = await fetch('https://air-quality-api.open-meteo.com/v1/air-quality?latitude='+place.latitude+'&longitude='+place.longitude+'&current=pm2_5,pm10,us_aqi,ozone,nitrogen_dioxide&domains=auto',{signal:lastController.signal});
+    const aq = await aqRes.json();
+    const data = {place, current: aq.current};
+    cache.set(key, data);
+    setTimeout(()=>cache.delete(key), 10*60*1000);
+    renderResult(data);
+  }catch(e){ if(e.name!=='AbortError') box.textContent='Error. Check internet and try again.'; }
+}
+function renderResult(data){
+  const box = document.getElementById('result');
+  const c = data.current;
+  const [label,color] = getAQILabel(c.us_aqi);
+  box.innerHTML='';
+  const b = document.createElement('b'); b.textContent = data.place.name+', '+(data.place.admin1||''); box.appendChild(b);
+  box.appendChild(document.createElement('br'));
+  const big = document.createElement('span'); big.style.fontSize='32px'; big.style.fontWeight='bold'; big.textContent = c.us_aqi+' US AQI '; box.appendChild(big);
+  const badge = document.createElement('span'); badge.className='badge'; badge.style.background=color; badge.textContent=label; box.appendChild(badge);
+  const p = document.createElement('div'); p.textContent = 'PM2.5: '+c.pm2_5+' | PM10: '+c.pm10+' | Ozone: '+c.ozone+' | NO2: '+c.nitrogen_dioxide+' | Updated: '+c.time; box.appendChild(p);
 }
 checkAQI();
 </script>
 </body>
-</html>
+  </html>
